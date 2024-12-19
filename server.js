@@ -26,7 +26,7 @@ connectDB();
 
 app.use("/images", express.static(path.resolve("public/images")));
 // Use user routes
-app.use('/api/v1/user', userRoutes);
+app.use('/api/user', userRoutes);
 
 
 app.get('/user/terms-and-conditions', (req, res) => {
@@ -39,6 +39,23 @@ res.setHeader('Content-Type', 'text/html');
 res.send(userPrivacyPolicyHTML);
 });
 
+app.get('/user/faq', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(userPrivacyPolicyHTML);
+  });
+  
+
+  app.get('/user/about', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.send(userPrivacyPolicyHTML);
+    });
+
+    
+app.get('/user/help', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(userPrivacyPolicyHTML);
+  });
+  
 
 // Root route
 app.get('/', (req, res) => {

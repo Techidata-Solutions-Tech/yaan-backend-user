@@ -1,6 +1,7 @@
 // controllers/userController.js
 import User from '../../models/User.js';
-import { userSchema } from '../../../validators/userValidator.js';
+import Address from '../../models/Address.js';
+import { userSchema ,phoneSchema, phoneNumberSchema,updateUserSchema ,addressSchema} from '../../../validators/userValidator.js';
 // Controller for creating a new user
 import jwt from 'jsonwebtoken';
 
@@ -10,21 +11,22 @@ export const registerUser = async (req, res) => {
     const validatedData = await userSchema.parseAsync(req.body);
 
     // If validation passes, proceed with user registration
-    const { name, email, password } = validatedData;
+    const { name, email, phone } = validatedData;
 
     // Check for existing user
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ phone, phone_verified:true });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
+    const otp = '1234';
     // Create and save the new user
-    const newUser = new User({ name, email, password });
+    const newUser = new User({ name, email, phone,otp_phone:otp, otp_phone_expiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000});
     await newUser.save();
 
     res.status(201).json({
       message: 'User registered successfully',
-      user: { name, email },
+      user: { name, phone},
     });
   } catch (error) {
     if (error?.errors?.[0]?.message) {
@@ -34,15 +36,50 @@ export const registerUser = async (req, res) => {
 }
 };
 
+export const phoneVerification = async (req,res) =>{
+ 
+  try{
+    const validatedData = await phoneSchema.parseAsync(req.body);
+    const { phone,otp } = validatedData;
+    const existingUser = await User.findOne({ phone}).sort({createdAt:-1});
+    if (!existingUser) {
+      return res.status(400).json({ message: 'User not found' });
+    }
+    if (existingUser.isDeleted) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if(existingUser.otp_phone !== otp){
+      return res.status(400).json({ message: 'OTP not matched' });
+    }
+    if (!existingUser.otp_phone_expiry || existingUser.otp_phone_expiry < Date.now()) {
+      return res.status(400).json({ message: 'OTP expired' });
+    }
+    existingUser.phone_verified = true;
+    existingUser.otp = null;
+    existingUser.otp_phone_expiry = null;
+    const isVerified = await existingUser.save()
+    if(isVerified){
+      return res.status(200).json({ message: 'OTP verified  successfully',token: existingUser.generateAuthToken() });
+    }
+    return res.status(400).json({ message: 'Phone not verified' });
+
+  } catch (error) {
+    console.log(error)
+    if (error?.errors?.[0]?.message) {
+        return res.status(400).json({ message: error.errors[0].message });
+    }
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
 export const requestOTPLogin = async (req,res) =>{
  
   try{
-    const { phone } = req.body;
-    // await UserValidationSchema.parseAsync(phone)
-    if (!phone) return res.status(400).json({ message: 'Phone number is required' });
-
+    const validatedData = await phoneNumberSchema.parseAsync(req.body);
+    const { phone } = validatedData;
     const existingUser = await User.findOne({ phone,phone_verified:true });
-    
     if (!existingUser) {
       return res.status(400).json({ message: 'User not found' });
     }
@@ -50,14 +87,13 @@ export const requestOTPLogin = async (req,res) =>{
       return res.status(404).json({ message: 'User not found' });
     }
     const otp = '1234';
-    const setUserPhoneLoginOtp = await User.updateOne({_id:existingUser._id},{$set:{
-      otp_login:otp,
-      otp_loginExpiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000
-    }});
-    if(setUserPhoneLoginOtp.modifiedCount === 1){
+    existingUser.otp_login = otp;
+    existingUser.otp_login_expiry = Date.now() + process.env.OTP_EXPIRATION_TIME * 1000;
+    const isOTPSend = await existingUser.save()
+    if(isOTPSend){
       return res.status(200).json({ message: 'OTP send sucessfully' });
     }
-    return res.status(200).json({ message: 'OTP could not send sucessfully' });
+    return res.status(400).json({ message: 'OTP could not send sucessfully' });
     
 
   } catch (error) {
@@ -71,10 +107,9 @@ export const requestOTPLogin = async (req,res) =>{
 
 export const loginUser = async (req,res) =>{
   try {
-    const { phone, otp } = req.body;
-    // await UserValidationSchema.parseAsync(phone)
-    if (!phone) return res.status(400).json({ message: 'Phone number is required' });
-    if (!otp) return res.status(400).json({ message: 'OTP number is required' });
+    const validatedData = await phoneSchema.parseAsync(req.body);
+    const { phone,otp } = validatedData;
+
     const existingUser = await User.findOne({ phone,phone_verified:true});
     if (existingUser.isDeleted) {
       return res.status(404).json({ message: 'User not found' });
@@ -82,20 +117,11 @@ export const loginUser = async (req,res) =>{
     if(!existingUser.otp_login || existingUser.otp_login !== otp){
       return res.status(400).json({ message: 'OTP not matched' });
     }
-    if (!existingUser.otp_loginExpiry || existingUser.otp_loginExpiry < Date.now()) {
+    if (!existingUser.otp_login_expiry || existingUser.otp_login_expiry < Date.now()) {
       return res.status(400).json({ message: 'OTP expired' });
     }
-    const token = jwt.sign({id: existingUser._id, phone, status: existingUser.status, date : Date.now() }, process.env.SECRET_KEY, { expiresIn: '30d' });
-    if(existingUser.status=== 'pending'){
-      return res.status(400).json({ message: 'Account verification pending',status:'pending' ,token});
-    }
-    else if(existingUser.status=== 'rejected'){
-      return res.status(400).json({ message: 'Account rejected',status:'rejected'});
-    }
-    else if(existingUser.status=== 'verified'){
-      return res.status(400).json({ message: 'Login successful',status:'verified',token});
-    }
-    return res.status(400).json({ message: 'Something went wrong',status:'none'});
+    return res.status(200).json({ message: 'Login successful',token:existingUser.generateAuthToken()});
+  
 
   } catch (error) {
     if (error?.errors?.[0]?.message) {
@@ -105,6 +131,32 @@ export const loginUser = async (req,res) =>{
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+
+export const userProfile = async (req, res) => {
+  try {
+    
+    const getUser = await User.findById(req.user._id).select('name phone email dob createdAt emergency_phone -_id')
+    
+    if (!getUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+
+    return res.status(200).json({ message: 'User found' , user: getUser});
+
+  } catch (error) {
+    console.error('Error in accountStatus:', error.message);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
+
+
+
+
 
 export const EmailLoginUser = async (req,res) =>{
   try {
@@ -170,87 +222,258 @@ export const userAccountDelete = async (req, res) => {
 
 
 
-export const userProfile = async (req, res) => {
+
+
+
+export const updateProfile = async (req, res) => {
   try {
-    
-    const token = req.headers.authorization;
-    // Validate if token is provided
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+    const validatedData = await updateUserSchema.parseAsync(req.body);
+
+    // If validation passes, proceed with user registration
+    const { name, email, phone, dob, emergency_phone } = validatedData;
+
+    let update_fields = {};
+    if(phone){
+      const phoneAlreadyexist = User.find({ phone,phone_verified:true});
+      if(phoneAlreadyexist){
+        return res.status(400).json({ message: 'Phone already exist' });
+      }
+      update_fields = {
+        name, email,  
+        temp_phone : phone, dob, emergency_phone, otp_phone_expiry : Date.now() + process.env.OTP_EXPIRATION_TIME * 1000, otp_phone: '1234'
+      }
+     
+    }else{
+      update_fields = {
+        name, email, dob, emergency_phone,
+      }
     }
-
-    // Decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-    
-    // Find the user by ID
-    const getUser = await User.findById(decoded.id).select('name phone email dob createdAt emergency_phone -_id')
-    
-    if (!getUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-
-    return res.status(200).json({ message: 'User found' , driver: getUser});
-
-  } catch (error) {
-    console.error('Error in accountStatus:', error.message);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-
-
-export const userProfileChangeDOB = async (req, res) => {
-  try {
-    const token = req.headers.authorization;
-
-    // Validate if token is provided
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
-    }
-
-    const { dob } = req.body;
-
-    if (!dob) {
-      return res.status(400).json({ message: 'Date is missing' });
-    }
-
-    // Validate dob format (e.g., YYYY-MM-DD)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-      return res.status(400).json({ message: 'Invalid date format. Use YYYY-MM-DD.' });
-    }
-
-    // Decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-
-    // Find the user
-    const user = await User.findOne({ _id: decoded.id });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Update the DOB
     const updateResult = await User.updateOne(
-      { _id: decoded.id }, // Match document by ID
-      { $set: { dob } }    // Update the dob field
+      { _id: req.user._id }, // Match document by ID
+      { $set: update_fields }    // Update the dob field
     );
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Date of birth is already the same' });
+      return res.status(400).json({ message: 'Nothing to update' });
     }
 
     // Success response
     return res.status(200).json({
-      message: 'Date of birth updated successfully',
+      message: 'Updated successfully',
     });
 
   } catch (error) {
-    console.error('Error in userProfileChangeDOB:', error.message);
+    console.log(error)
+    if (error?.errors?.[0]?.message) {
+      return res.status(400).json({ message: error.errors[0].message });
+    }
+  return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+export const userProfileChangePhoneVerify = async (req, res) => {
+  try {
+   
+
+    const {otp } = req.body;
+
+
+    if (!otp) {
+      return res.status(400).json({ message: 'OTP is missing' });
+    }
+
+    // Decode the token
+  
+
+    // Find the user
+    const getUser = await User.findById({ _id: req.user.id });
+    if (!getUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Validate OTP and expiry
+    if (getUser.otp_phone !== otp) {
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+
+    if (getUser.otp_phone_expiry <  Date.now()) {
+      return res.status(400).json({ message: 'OTP has expired' });
+    }
+
+    // Update the phone number after successful OTP verification
+    const updateResult = await User.updateOne(
+      { _id: getUser._id }, // Match document by ID
+      { 
+        $set: { phone:getUser.temp_phone, otp_phone: null,
+          otp_phone_expiry: null, temp_phone: null,
+          phone_verified:true } // Finalize phone update and clear temp fields
+      }
+    );
+
+    // Check if the update actually modified the document
+    if (updateResult.modifiedCount === 0) {
+      return res.status(400).json({ message: 'Failed to update phone number' });
+    }
+
+    // Success response
+    return res.status(200).json({
+      message: 'Phone number updated successfully',
+    });
+
+  } catch (error) {
+    console.error('Error in userProfileChangePhoneVerify:', error.message);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+export const getUserNotfication = async (req, res) => {
+  try {
+    
+    const getUser = await User.findById(req.user?._id);
+
+    const { message, wallet } = getUser.notification;
+
+    return res.status(200).json({ message, wallet });
+  
+  } catch (error) {
+    console.error('Error adding notifications:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
+export const userNotfication = async (req, res) => {
+  try {
+    
+   
+    
+    const getDriver = await User.findById(req.user?._id)
+    
+    const { message, wallet } = req.body; // Destructure notifications from request body
+
+    // Validate input
+    if (!message && !wallet) {
+      return res.status(400).json({ success: false, message: 'Message or wallet notification required.' });
+    }
+
+    // Find the driver
+   
+    if (!getDriver) {
+      return res.status(404).json({ success: false, message: 'Driver not found.' });
+    }
+
+    // Push new notifications
+    if (message) {
+      getDriver.notification.message.push({
+        isRead: false, // Default unread status
+        message: message, // Notification content
+      });
+    }
+
+    if (wallet) {
+      getDriver.notification.wallet.push({
+        isRead: false, // Default unread status
+        wallet: wallet, // Notification content
+      });
+    }
+
+    // Save the updated driver document
+    await getDriver.save();
+
+    return res.status(200).json({ success: true, message: 'Notifications added successfully!' });
+  } catch (error) {
+    console.error('Error adding notifications:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+};
+
+
+
+
+
+
+
+
+export const addAddress = async (req, res) => {
+  try {
+    const validatedData = await addressSchema.parseAsync(req.body);
+
+    // If validation passes, proceed with user registration
+    const {   name,
+      state,
+      city,
+      addressLine1,
+      addressLine2,
+      houseNumber,
+      landmark } = validatedData;
+    // Fetch all favorite addresses for the logged-in user
+    const createAddresses = await Address.create({  name,
+      state,
+      city,
+      addressLine1,
+      addressLine2,
+      houseNumber,
+      landmark , userId: req.user._id});
+
+    if (createAddresses) {
+      return res.status(200).json({ message : 'Address created' });
+    }
+
+    return res.status(400).json({ message : 'Address not created' });
+  } catch (error) {
+    if (error?.errors?.[0]?.message) {
+      return res.status(400).json({ message: error.errors[0].message });
+  }
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+export const getFavoriteAddresses = async (req, res) => {
+  try {
+    // Fetch all favorite addresses for the logged-in user
+    const favoriteAddresses = await Address.find({ userId: req.user._id, isFavorite: true });
+
+    if (favoriteAddresses.length === 0) {
+      return res.status(404).json([]);
+    }
+
+    return res.status(200).json( favoriteAddresses);
+  } catch (error) {
+    console.error('Error fetching favorite addresses:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+export const addFavoriteAddress = async (req, res) => {
+  try {
+    const { addressId } = req.body; // Assume we get the addressId from the request body
+
+    if (!addressId) {
+      return res.status(400).json({ message: 'Address ID is required' });
+    }
+
+    // Find the address by ID and make sure it's associated with the user
+    const address = await Address.findOne({ _id: addressId, userId: req.user._id });
+
+    if (!address) {
+      return res.status(404).json({ message: 'Address not found' });
+    }
+
+    // Mark the address as favorite
+    address.isFavorite = true;
+    await address.save();
+
+    return res.status(200).json({ message: 'Address marked as favorite', address });
+  } catch (error) {
+    console.error('Error adding favorite address:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+
+
 
 export const userProfileChangeName = async (req, res) => {
   try {
@@ -354,66 +577,7 @@ export const userProfileChangePhone = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
-export const userProfileChangePhoneVerify = async (req, res) => {
-  try {
-    const token = req.headers.authorization;
 
-    // Validate if token is provided
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
-    }
-
-    const {otp } = req.body;
-
-
-    if (!otp) {
-      return res.status(400).json({ message: 'OTP is missing' });
-    }
-
-    // Decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-
-    // Find the user
-    const getUser = await User.findOne({ _id: decoded.id });
-
-    if (!getUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Validate OTP and expiry
-    if (getUser.otp_phone !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP' });
-    }
-
-    const now = Date.now();
-    if (getUser.otp_login_expiry < now) {
-      return res.status(400).json({ message: 'OTP has expired' });
-    }
-
-    // Update the phone number after successful OTP verification
-    const updateResult = await User.updateOne(
-      { _id: decoded.id }, // Match document by ID
-      { 
-        $set: { phone:getUser.temp_phone, otp_phone: null, otp_login_expiry: null, temp_phone: null,
-          phone_verified:true } // Finalize phone update and clear temp fields
-      }
-    );
-
-    // Check if the update actually modified the document
-    if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Failed to update phone number' });
-    }
-
-    // Success response
-    return res.status(200).json({
-      message: 'Phone number updated successfully',
-    });
-
-  } catch (error) {
-    console.error('Error in userProfileChangePhoneVerify:', error.message);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-};
 
 
 export const userProfileChangeEmail = async (req, res) => {
@@ -585,84 +749,20 @@ export const userProfileChangePhoneEmergency = async (req, res) => {
 };
 
 
-export const userNotfication = async (req, res) => {
-  try {
-    
-    const token = req.headers.authorization;
-    // Validate if token is provided
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
-    }
 
-    // Decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-    
-    // Find the driver by ID
-    const getDriver = await User.findById(decoded.id)
-    
-    const { message, wallet } = req.body; // Destructure notifications from request body
-
-    // Validate input
-    if (!message && !wallet) {
-      return res.status(400).json({ success: false, message: 'Message or wallet notification required.' });
-    }
-
-    // Find the driver
-   
-    if (!getDriver) {
-      return res.status(404).json({ success: false, message: 'Driver not found.' });
-    }
-
-    // Push new notifications
-    if (message) {
-      getDriver.notification.message.push({
-        isRead: false, // Default unread status
-        message: message, // Notification content
-      });
-    }
-
-    if (wallet) {
-      getDriver.notification.wallet.push({
-        isRead: false, // Default unread status
-        wallet: wallet, // Notification content
-      });
-    }
-
-    // Save the updated driver document
-    await getDriver.save();
-
-    return res.status(200).json({ success: true, message: 'Notifications added successfully!' });
-  } catch (error) {
-    console.error('Error adding notifications:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-};
 
 
 
 export const userNotficationMessage = async (req, res) => {
   try {
     
-    const token = req.headers.authorization;
-    // Validate if token is provided
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
-    }
-
-    // Decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
     
-    // Find the driver by ID
-    const getDriver = await User.findById(decoded.id)
+    const getDriver = await User.findById(req.user._id)
     
-    const { message} = getDriver.notification;
+    // const { message} = getDriver.notification;
 
     // Return the notifications
-    return res.status(200).json({
-      success: true,
-      message: 'Notification message fetched successfully!',
-      notification_message:message
-    });
+    return res.status(200).json(getDriver.notification);
   } catch (error) {
     console.error('Error adding notifications:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
