@@ -16,7 +16,7 @@ export const registerUser = async (req, res) => {
     // Check for existing user
     const existingUser = await User.findOne({ phone, phone_verified:true });
     if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(500).json({ message: 'User already exists' });
     }
 
     const otp = '1234';
@@ -24,13 +24,13 @@ export const registerUser = async (req, res) => {
     const newUser = new User({ name, email, phone,otp_phone:otp, otp_phone_expiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000});
     await newUser.save();
 
-    res.status(201).json({
+    res.status(200).json({
       message: 'User registered successfully',
       user: { name, phone},
     });
   } catch (error) {
     if (error?.errors?.[0]?.message) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message });
     }
     return res.status(500).json({ message: 'Internal server error' });
 }
@@ -43,16 +43,16 @@ export const phoneVerification = async (req,res) =>{
     const { phone,otp } = validatedData;
     const existingUser = await User.findOne({ phone}).sort({createdAt:-1});
     if (!existingUser) {
-      return res.status(400).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
     if (existingUser.isDeleted) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
     if(existingUser.otp_phone !== otp){
-      return res.status(400).json({ message: 'OTP not matched' });
+      return res.status(500).json({ message: 'OTP not matched' });
     }
     if (!existingUser.otp_phone_expiry || existingUser.otp_phone_expiry < Date.now()) {
-      return res.status(400).json({ message: 'OTP expired' });
+      return res.status(500).json({ message: 'OTP expired' });
     }
     existingUser.phone_verified = true;
     existingUser.otp = null;
@@ -61,12 +61,12 @@ export const phoneVerification = async (req,res) =>{
     if(isVerified){
       return res.status(200).json({ message: 'OTP verified  successfully',token: existingUser.generateAuthToken() });
     }
-    return res.status(400).json({ message: 'Phone not verified' });
+    return res.status(500).json({ message: 'Phone not verified' });
 
   } catch (error) {
     console.log(error)
     if (error?.errors?.[0]?.message) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message });
     }
     return res.status(500).json({ message: 'Internal server error' });
   }
@@ -81,10 +81,10 @@ export const requestOTPLogin = async (req,res) =>{
     const { phone } = validatedData;
     const existingUser = await User.findOne({ phone,phone_verified:true });
     if (!existingUser) {
-      return res.status(400).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
     if (existingUser.isDeleted) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
     const otp = '1234';
     existingUser.otp_login = otp;
@@ -93,12 +93,12 @@ export const requestOTPLogin = async (req,res) =>{
     if(isOTPSend){
       return res.status(200).json({ message: 'OTP send sucessfully' });
     }
-    return res.status(400).json({ message: 'OTP could not send sucessfully' });
+    return res.status(500).json({ message: 'OTP could not send sucessfully' });
     
 
   } catch (error) {
     if (error?.errors?.[0]?.message) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message });
     }
     console.log(error)
     return res.status(500).json({ message: 'Internal server error' });
@@ -112,20 +112,20 @@ export const loginUser = async (req,res) =>{
 
     const existingUser = await User.findOne({ phone,phone_verified:true});
     if (existingUser.isDeleted) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
     if(!existingUser.otp_login || existingUser.otp_login !== otp){
-      return res.status(400).json({ message: 'OTP not matched' });
+      return res.status(500).json({ message: 'OTP not matched' });
     }
     if (!existingUser.otp_login_expiry || existingUser.otp_login_expiry < Date.now()) {
-      return res.status(400).json({ message: 'OTP expired' });
+      return res.status(500).json({ message: 'OTP expired' });
     }
     return res.status(200).json({ message: 'Login successful',token:existingUser.generateAuthToken()});
   
 
   } catch (error) {
     if (error?.errors?.[0]?.message) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message });
     }
     console.log(error)
     return res.status(500).json({ message: 'Internal server error' });
@@ -139,7 +139,7 @@ export const userProfile = async (req, res) => {
     const getUser = await User.findById(req.user._id).select('name phone email dob createdAt emergency_phone -_id')
     
     if (!getUser) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
 
@@ -162,23 +162,23 @@ export const EmailLoginUser = async (req,res) =>{
   try {
     const { email, password } = req.body;
     // await UserValidationSchema.parseAsync(phone)
-    if (!email) return res.status(400).json({ message: 'Email number is required' });
-    if (!password) return res.status(400).json({ message: 'Password number is required' });
+    if (!email) return res.status(500).json({ message: 'Email number is required' });
+    if (!password) return res.status(500).json({ message: 'Password number is required' });
     const existingUser = await User.findOne({  email, email_verified:true});
     if (!existingUser || existingUser.isDeleted) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
     if(!existingUser.password || existingUser.password !== password){
-      return res.status(400).json({ message: 'Password not matched' });
+      return res.status(500).json({ message: 'Password not matched' });
     }
     
     const token = jwt.sign({id: existingUser._id}, process.env.SECRET_KEY, { expiresIn: '30d' });
-    return res.status(400).json({ message: 'Login successful',token});
+    return res.status(500).json({ message: 'Login successful',token});
    
 
   } catch (error) {
     if (error?.errors?.[0]?.message) {
-        return res.status(400).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message });
     }
     console.log(error)
     return res.status(500).json({ message: 'Internal server error' });
@@ -190,25 +190,17 @@ export const EmailLoginUser = async (req,res) =>{
 
 export const userAccountDelete = async (req, res) => {
   try {
-    const token = req.headers.authorization;
-
-    // Validate if token is provided
-    if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
-    }
-
-    // Decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    
     
     // Find the driver by ID
     const existingUser = await User.findOneAndUpdate(
-      { _id: decoded.id,  }, // Match document by ID and ensure `isDeleted` is 0
+      { _id: req.user._id,  }, // Match document by ID and ensure `isDeleted` is 0
       { $set: { isDeleted: true } }, // Update fields as needed
       { new: true } // Return the updated document
     );
     
     if (!existingUser) {
-      return res.status(404).json({ message: 'Driver not found' });
+      return res.status(500).json({ message: 'Driver not found' });
     } else {
        return res.status(200).json({ message: 'Driver deleted'});
     }
@@ -236,7 +228,7 @@ export const updateProfile = async (req, res) => {
     if(phone){
       const phoneAlreadyexist = User.find({ phone,phone_verified:true});
       if(phoneAlreadyexist){
-        return res.status(400).json({ message: 'Phone already exist' });
+        return res.status(500).json({ message: 'Phone already exist' });
       }
       update_fields = {
         name, email,  
@@ -255,7 +247,7 @@ export const updateProfile = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Nothing to update' });
+      return res.status(500).json({ message: 'Nothing to update' });
     }
 
     // Success response
@@ -266,7 +258,7 @@ export const updateProfile = async (req, res) => {
   } catch (error) {
     console.log(error)
     if (error?.errors?.[0]?.message) {
-      return res.status(400).json({ message: error.errors[0].message });
+      return res.status(500).json({ message: error.errors[0].message });
     }
   return res.status(500).json({ message: 'Internal server error' });
   }
@@ -281,7 +273,7 @@ export const userProfileChangePhoneVerify = async (req, res) => {
 
 
     if (!otp) {
-      return res.status(400).json({ message: 'OTP is missing' });
+      return res.status(500).json({ message: 'OTP is missing' });
     }
 
     // Decode the token
@@ -290,16 +282,16 @@ export const userProfileChangePhoneVerify = async (req, res) => {
     // Find the user
     const getUser = await User.findById({ _id: req.user.id });
     if (!getUser) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
     // Validate OTP and expiry
     if (getUser.otp_phone !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP' });
+      return res.status(500).json({ message: 'Invalid OTP' });
     }
 
     if (getUser.otp_phone_expiry <  Date.now()) {
-      return res.status(400).json({ message: 'OTP has expired' });
+      return res.status(500).json({ message: 'OTP has expired' });
     }
 
     // Update the phone number after successful OTP verification
@@ -314,7 +306,7 @@ export const userProfileChangePhoneVerify = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Failed to update phone number' });
+      return res.status(500).json({ message: 'Failed to update phone number' });
     }
 
     // Success response
@@ -353,13 +345,13 @@ export const userNotfication = async (req, res) => {
 
     // Validate input
     if (!message && !wallet) {
-      return res.status(400).json({ success: false, message: 'Message or wallet notification required.' });
+      return res.status(500).json({ success: false, message: 'Message or wallet notification required.' });
     }
 
     // Find the driver
    
     if (!getDriver) {
-      return res.status(404).json({ success: false, message: 'Driver not found.' });
+      return res.status(500).json({ success: false, message: 'Driver not found.' });
     }
 
     // Push new notifications
@@ -419,10 +411,10 @@ export const addAddress = async (req, res) => {
       return res.status(200).json({ message : 'Address created' });
     }
 
-    return res.status(400).json({ message : 'Address not created' });
+    return res.status(500).json({ message : 'Address not created' });
   } catch (error) {
     if (error?.errors?.[0]?.message) {
-      return res.status(400).json({ message: error.errors[0].message });
+      return res.status(500).json({ message: error.errors[0].message });
   }
     return res.status(500).json({ message: 'Internal server error' });
   }
@@ -434,7 +426,7 @@ export const getFavoriteAddresses = async (req, res) => {
     const favoriteAddresses = await Address.find({ userId: req.user._id, isFavorite: true });
 
     if (favoriteAddresses.length === 0) {
-      return res.status(404).json([]);
+      return res.status(500).json([]);
     }
 
     return res.status(200).json( favoriteAddresses);
@@ -450,14 +442,14 @@ export const addFavoriteAddress = async (req, res) => {
     const { addressId } = req.body; // Assume we get the addressId from the request body
 
     if (!addressId) {
-      return res.status(400).json({ message: 'Address ID is required' });
+      return res.status(500).json({ message: 'Address ID is required' });
     }
 
     // Find the address by ID and make sure it's associated with the user
     const address = await Address.findOne({ _id: addressId, userId: req.user._id });
 
     if (!address) {
-      return res.status(404).json({ message: 'Address not found' });
+      return res.status(500).json({ message: 'Address not found' });
     }
 
     // Mark the address as favorite
@@ -481,13 +473,13 @@ export const userProfileChangeName = async (req, res) => {
 
     // Validate if token is provided
     if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+      return res.status(500).json({ message: 'Token not found' });
     }
 
     const { name } = req.body;
 
     if (!name) {
-      return res.status(400).json({ message: 'Name is missing' });
+      return res.status(500).json({ message: 'Name is missing' });
     }
 
  
@@ -499,7 +491,7 @@ export const userProfileChangeName = async (req, res) => {
     const user = await User.findOne({ _id: decoded.id });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
     // Update the DOB
@@ -510,7 +502,7 @@ export const userProfileChangeName = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Name is already the same' });
+      return res.status(500).json({ message: 'Name is already the same' });
     }
 
     // Success response
@@ -530,18 +522,18 @@ export const userProfileChangePhone = async (req, res) => {
 
     // Validate if token is provided
     if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+      return res.status(500).json({ message: 'Token not found' });
     }
 
     const { phone } = req.body;
 
     if (!phone) {
-      return res.status(400).json({ message: 'Phone number is missing' });
+      return res.status(500).json({ message: 'Phone number is missing' });
     }
 
     // Validate phone format (e.g., 10-digit number)
     if (!/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ message: 'Invalid phone number format. It should be a 10-digit number.' });
+      return res.status(500).json({ message: 'Invalid phone number format. It should be a 10-digit number.' });
     }
 
     // Decode the token
@@ -551,7 +543,7 @@ export const userProfileChangePhone = async (req, res) => {
     const user = await User.findOne({ _id: decoded.id });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
     const otp = '1234'
@@ -564,7 +556,7 @@ export const userProfileChangePhone = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Phone number is already the same' });
+      return res.status(500).json({ message: 'Phone number is already the same' });
     }
 
     // Success response
@@ -586,18 +578,18 @@ export const userProfileChangeEmail = async (req, res) => {
 
     // Validate if token is provided
     if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+      return res.status(500).json({ message: 'Token not found' });
     }
 
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({ message: 'Email is missing' });
+      return res.status(500).json({ message: 'Email is missing' });
     }
 
     // Validate email format
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ message: 'Invalid email format' });
+      return res.status(500).json({ message: 'Invalid email format' });
     }
 
     // Decode the token
@@ -607,7 +599,7 @@ export const userProfileChangeEmail = async (req, res) => {
     const user = await User.findOne({ _id: decoded.id });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
     // Generate OTP (for simplicity, hardcoding here; ideally, generate dynamically)
@@ -621,7 +613,7 @@ export const userProfileChangeEmail = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Email is already the same' });
+      return res.status(500).json({ message: 'Email is already the same' });
     }
 
     // Send OTP response
@@ -641,13 +633,13 @@ export const userProfileChangeEmailVerify = async (req, res) => {
 
     // Validate if token is provided
     if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+      return res.status(500).json({ message: 'Token not found' });
     }
 
     const { otp } = req.body;
 
     if (!otp) {
-      return res.status(400).json({ message: 'OTP is missing' });
+      return res.status(500).json({ message: 'OTP is missing' });
     }
 
     // Decode the token
@@ -657,17 +649,17 @@ export const userProfileChangeEmailVerify = async (req, res) => {
     const getUser = await User.findOne({ _id: decoded.id });
 
     if (!getUser) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
     // Validate OTP and expiry
     if (getUser.otp_email !== otp) {
-      return res.status(400).json({ message: 'Invalid OTP' });
+      return res.status(500).json({ message: 'Invalid OTP' });
     }
 
     const now = Date.now();
     if (getUser.otp_email_expiry < now) {
-      return res.status(400).json({ message: 'OTP has expired' });
+      return res.status(500).json({ message: 'OTP has expired' });
     }
 
     // Finalize the email update
@@ -680,7 +672,7 @@ export const userProfileChangeEmailVerify = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Failed to update email' });
+      return res.status(500).json({ message: 'Failed to update email' });
     }
 
     // Success response
@@ -702,18 +694,18 @@ export const userProfileChangePhoneEmergency = async (req, res) => {
 
     // Validate if token is provided
     if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+      return res.status(500).json({ message: 'Token not found' });
     }
 
     const { emergency_phone } = req.body;
 
     if (!emergency_phone) {
-      return res.status(400).json({ message: 'Phone number is missing' });
+      return res.status(500).json({ message: 'Phone number is missing' });
     }
 
     // Validate phone format (e.g., 10-digit number)
     if (!/^\d{10}$/.test(emergency_phone)) {
-      return res.status(400).json({ message: 'Invalid phone number format. It should be a 10-digit number.' });
+      return res.status(500).json({ message: 'Invalid phone number format. It should be a 10-digit number.' });
     }
 
     // Decode the token
@@ -723,7 +715,7 @@ export const userProfileChangePhoneEmergency = async (req, res) => {
     const user = await User.findOne({ _id: decoded.id });
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found' });
     }
 
     // Update the phone
@@ -734,7 +726,7 @@ export const userProfileChangePhoneEmergency = async (req, res) => {
 
     // Check if the update actually modified the document
     if (updateResult.modifiedCount === 0) {
-      return res.status(400).json({ message: 'Phone number is already the same' });
+      return res.status(500).json({ message: 'Phone number is already the same' });
     }
 
     // Success response
@@ -776,7 +768,7 @@ export const userNotficationWallet = async (req, res) => {
     const token = req.headers.authorization;
     // Validate if token is provided
     if (!token) {
-      return res.status(404).json({ message: 'Token not found' });
+      return res.status(500).json({ message: 'Token not found' });
     }
 
     // Decode the token

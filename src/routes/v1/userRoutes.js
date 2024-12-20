@@ -30,7 +30,7 @@ router.get('/notification',authUser, getUserNotfication);
 router.post('/address',authUser, addAddress);
 router.get('/favorite',authUser,  getFavoriteAddresses);
 router.patch('/favorite',authUser, addFavoriteAddress );
-router.get('/delete-account',userAccountDelete);
+router.get('/delete-account',authUser, userAccountDelete);
 
 
 // router.post('/notification',authUser, userNotfication);
