@@ -226,7 +226,7 @@ export const updateProfile = async (req, res) => {
 
     let update_fields = {};
     if(phone){
-      const phoneAlreadyexist = User.find({ phone,phone_verified:true});
+      const phoneAlreadyexist = await User.findOne({ phone,phone_verified:true});
       if(phoneAlreadyexist){
         return res.status(500).json({ message: 'Phone already exist' });
       }
