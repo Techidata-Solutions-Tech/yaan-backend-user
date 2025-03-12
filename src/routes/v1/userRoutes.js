@@ -20,7 +20,8 @@ const router = express.Router();
 
 // POST /api/v1/users/register - Register a new user
 router.post('/register', registerUser);
-router.post('/verify_otp', phoneVerification );
+router.post('/verify-otp', phoneVerification );
+
 router.post('/send_otp',requestOTPLogin);
 router.post('/verify_login_otp',loginUser);
 router.get('/profile',authUser,userProfile);

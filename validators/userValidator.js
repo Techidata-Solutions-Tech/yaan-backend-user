@@ -6,11 +6,6 @@ export const userSchema = z.object({
     .trim()
     .min(3, { message: "Username must be at least 3 characters" }),
 
-  email: z
-    .string({ invalid_type_error: "Email must be a string" })
-    .trim()
-    .email({ message: "Invalid email address" })
-    .optional(),
 
   phone: z
     .string({ required_error: "Phone is required", invalid_type_error: "Phone must be a string" })

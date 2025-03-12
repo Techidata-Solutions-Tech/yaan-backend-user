@@ -1,43 +1,42 @@
-// controllers/userController.js
+
+
 import User from '../../models/User.js';
 import Address from '../../models/Address.js';
 import { userSchema ,phoneSchema, phoneNumberSchema,updateUserSchema ,addressSchema} from '../../../validators/userValidator.js';
-// Controller for creating a new user
+
 import jwt from 'jsonwebtoken';
 
 export const registerUser = async (req, res) => {
   try {
-    // Validate the request body using the Zod schema
     const validatedData = await userSchema.parseAsync(req.body);
 
-    // If validation passes, proceed with user registration
-    const { name, email, phone } = validatedData;
+    const { name, phone } = validatedData;
 
-    // Check for existing user
     const existingUser = await User.findOne({ phone, phone_verified:true });
     if (existingUser) {
       return res.status(500).json({ message: 'User already exists' });
     }
 
-    const otp = '1234';
-    // Create and save the new user
-    const newUser = new User({ name, email, phone,otp_phone:otp, otp_phone_expiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000});
-    await newUser.save();
+    const otp = '123456';
+    const newUser = new User({ name,  phone,otp_phone:otp, otp_phone_expiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000});
+    const user = await newUser.save();
 
     res.status(200).json({
+      success: true,
       message: 'User registered successfully',
-      user: { name, phone},
+      userId: user._id,
     });
   } catch (error) {
+    console.log(error)
     if (error?.errors?.[0]?.message) {
         return res.status(500).json({ message: error.errors[0].message });
     }
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json({success: false, message: 'Something went wrong' });
 }
 };
 
 export const phoneVerification = async (req,res) =>{
- 
+
   try{
     const validatedData = await phoneSchema.parseAsync(req.body);
     const { phone,otp } = validatedData;
@@ -59,9 +58,9 @@ export const phoneVerification = async (req,res) =>{
     existingUser.otp_phone_expiry = null;
     const isVerified = await existingUser.save()
     if(isVerified){
-      return res.status(200).json({ message: 'OTP verified  successfully',token: existingUser.generateAuthToken() });
+      return res.status(200).json({ sucess:true, verified:true });
     }
-    return res.status(500).json({ message: 'Phone not verified' });
+    return res.status(500).json({  sucess:false, error: 'Invalid OTP' });
 
   } catch (error) {
     console.log(error)
