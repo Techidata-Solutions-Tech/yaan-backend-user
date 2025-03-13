@@ -14,7 +14,7 @@ export const registerUser = async (req, res) => {
 
     const existingUser = await User.findOne({ phone, phone_verified:true });
     if (existingUser) {
-      return res.status(500).json({ message: 'User already exists' });
+      return res.status(500).json({ message: 'User already exists',success:false });
     }
 
     const otp = '123456';
@@ -29,7 +29,7 @@ export const registerUser = async (req, res) => {
   } catch (error) {
     console.log(error)
     if (error?.errors?.[0]?.message) {
-        return res.status(500).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message ,success:false});
     }
     return res.status(500).json({success: false, message: 'Something went wrong' });
 }
@@ -42,36 +42,58 @@ export const phoneVerification = async (req,res) =>{
     const { phone,otp } = validatedData;
     const existingUser = await User.findOne({ phone}).sort({createdAt:-1});
     if (!existingUser) {
-      return res.status(500).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found',success:false });
     }
     if (existingUser.isDeleted) {
-      return res.status(500).json({ message: 'User not found' });
+      return res.status(500).json({ message: 'User not found',success:false });
     }
     if(existingUser.otp_phone !== otp){
-      return res.status(500).json({ message: 'OTP not matched' });
+      return res.status(500).json({ message: 'OTP not matched' ,success:false});
     }
     if (!existingUser.otp_phone_expiry || existingUser.otp_phone_expiry < Date.now()) {
-      return res.status(500).json({ message: 'OTP expired' });
+      return res.status(500).json({ message: 'OTP expired',success:false });
     }
     existingUser.phone_verified = true;
     existingUser.otp = null;
     existingUser.otp_phone_expiry = null;
     const isVerified = await existingUser.save()
     if(isVerified){
-      return res.status(200).json({ sucess:true, verified:true });
+      return res.status(200).json({ success:true, verified:true });
     }
-    return res.status(500).json({  sucess:false, error: 'Invalid OTP' });
+    return res.status(500).json({  success:false, error: 'Invalid OTP' });
 
   } catch (error) {
     console.log(error)
     if (error?.errors?.[0]?.message) {
-        return res.status(500).json({ message: error.errors[0].message });
+        return res.status(500).json({ message: error.errors[0].message,success:false });
     }
-    return res.status(500).json({ message: 'Internal server error' });
+    return res.status(500).json({ message: 'Internal server error',success:false });
   }
 };
 
-
+export const userExist = async (req,res) =>{
+ 
+  try{
+    const validatedData = await phoneNumberSchema.parseAsync(req.body);
+    const { phone } = validatedData;
+    const existingUser = await User.findOne({ phone,phone_verified:true });
+    if (!existingUser) {
+      return res.status(500).json({ error: 'User not found',success:false });
+    }
+    if (existingUser.isDeleted) {
+      return res.status(500).json({ error: 'User not found',success:false });
+    }
+    if(existingUser){
+      return res.status(200).json({ success:true,userExists:true,userId:existingUser._id});
+    }
+    return res.status(500).json({ error: 'User not found',success:false });
+  } catch (error) {
+    if (error?.errors?.[0]?.message) {
+        return res.status(500).json({ message: error.errors[0].message,success:false });
+    }
+    return res.status(500).json({ message: 'Internal server error',success:false });
+  }
+};
 
 export const requestOTPLogin = async (req,res) =>{
  
@@ -80,29 +102,100 @@ export const requestOTPLogin = async (req,res) =>{
     const { phone } = validatedData;
     const existingUser = await User.findOne({ phone,phone_verified:true });
     if (!existingUser) {
-      return res.status(500).json({ message: 'User not found' });
+      return res.status(500).json({ error: 'User not found',success:false });
     }
     if (existingUser.isDeleted) {
-      return res.status(500).json({ message: 'User not found' });
+      return res.status(500).json({ error: 'User not found',success:false });
     }
-    const otp = '1234';
-    existingUser.otp_login = otp;
-    existingUser.otp_login_expiry = Date.now() + process.env.OTP_EXPIRATION_TIME * 1000;
+    const otp = '123456';
+    existingUser.otp_phone = otp;
+    existingUser.otp_phone_expiry=Date.now() + process.env.OTP_EXPIRATION_TIME * 1000;
+    const isOTPSend = await existingUser.save();
+    if(isOTPSend){
+      return res.status(200).json({ success:true,otpSent:true});
+    }
+    return res.status(500).json({ error: 'Failed to send OTP',success:false });
+  } catch (error) {
+    if (error?.errors?.[0]?.message) {
+        return res.status(500).json({ message: error.errors[0].message,success:false });
+    }
+    return res.status(500).json({ message: 'Internal server error',success:false });
+  }
+};
+
+export const requestResendOTPLogin = async (req,res) =>{
+ 
+  try{
+    const validatedData = await phoneNumberSchema.parseAsync(req.body);
+    const { phone } = validatedData;
+    const existingUser = await User.findOne({ phone,phone_verified:true });
+    if (!existingUser) {
+      return res.status(500).json({ message: 'User not found',success:false });
+    }
+    if (existingUser.isDeleted) {
+      return res.status(500).json({ message: 'User not found',success:false });
+    }
+    const otp = '123456';
+    existingUser.otp_phone = otp;
+    existingUser.otp_phone_expiry=Date.now() + process.env.OTP_EXPIRATION_TIME * 1000;
     const isOTPSend = await existingUser.save()
     if(isOTPSend){
-      return res.status(200).json({ message: 'OTP send sucessfully' });
+      return res.status(200).json({ otpResent:true,success:true });
     }
-    return res.status(500).json({ message: 'OTP could not send sucessfully' });
+    return res.status(500).json({success:false, message: 'OTP limit exceeded' });
     
 
   } catch (error) {
     if (error?.errors?.[0]?.message) {
-        return res.status(500).json({ message: error.errors[0].message });
+        return res.status(400).json({ message: error.errors[0].message });
     }
     console.log(error)
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ----------------------old--------------------------------
+
+
+
+
+
+
+
+
 
 export const loginUser = async (req,res) =>{
   try {
