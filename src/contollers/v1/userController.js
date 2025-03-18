@@ -101,20 +101,25 @@ export const requestOTPLogin = async (req,res) =>{
     const validatedData = await phoneNumberSchema.parseAsync(req.body);
     const { phone } = validatedData;
     const existingUser = await User.findOne({ phone,phone_verified:true });
-    if (!existingUser) {
-      return res.status(500).json({ error: 'User not found',success:false });
-    }
-    if (existingUser.isDeleted) {
-      return res.status(500).json({ error: 'User not found',success:false });
-    }
     const otp = '123456';
-    existingUser.otp_phone = otp;
-    existingUser.otp_phone_expiry=Date.now() + process.env.OTP_EXPIRATION_TIME * 1000;
-    const isOTPSend = await existingUser.save();
-    if(isOTPSend){
-      return res.status(200).json({ success:true,otpSent:true});
+    if (!existingUser) {
+      const newUser = new User({ phone,otp_phone:otp, otp_phone_expiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000});
+      const user = await newUser.save();
+      if(user){
+        return res.status(200).json({ success:true,otpSent:true});
+      }
+      return res.status(500).json({ error: 'User not found',success:false });
+    }else{
+      existingUser.otp_phone = otp;
+      existingUser.otp_phone_expiry=Date.now() + process.env.OTP_EXPIRATION_TIME * 1000;
+      const isOTPSend = await existingUser.save();
+      if(isOTPSend){
+        return res.status(200).json({ success:true,otpSent:true});
+      }
+      return res.status(500).json({ error: 'Failed to send OTP',success:false });
     }
-    return res.status(500).json({ error: 'Failed to send OTP',success:false });
+    
+   
   } catch (error) {
     if (error?.errors?.[0]?.message) {
         return res.status(500).json({ message: error.errors[0].message,success:false });
