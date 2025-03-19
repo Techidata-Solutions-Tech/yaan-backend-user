@@ -22,7 +22,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-
+    is_new_user: {
+      type: Boolean,
+      default: true,
+    },
     temp_email: {
       type: String,
       default: null,

@@ -9,30 +9,26 @@ import jwt from 'jsonwebtoken';
 export const registerUser = async (req, res) => {
   try {
     const validatedData = await userSchema.parseAsync(req.body);
-
     const { name, phone } = validatedData;
-
     const existingUser = await User.findOne({ phone, phone_verified:true });
     if (existingUser) {
-      return res.status(500).json({ message: 'User already exists',success:false });
+      existingUser.name=name;
+      existingUser.is_new_user=false;
+      existingUser.save();
+      res.status(200).json({
+        success: true,
+        message: 'User registered successfully',
+        userId: existingUser._id,
+      });
     }
-
-    const otp = '123456';
-    const newUser = new User({ name,  phone,otp_phone:otp, otp_phone_expiry: Date.now() + process.env.OTP_EXPIRATION_TIME * 1000});
-    const user = await newUser.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'User registered successfully',
-      userId: user._id,
-    });
+    return res.status(500).json({ error: 'Something went wrong',success:false });
   } catch (error) {
     console.log(error)
     if (error?.errors?.[0]?.message) {
         return res.status(500).json({ message: error.errors[0].message ,success:false});
     }
     return res.status(500).json({success: false, message: 'Something went wrong' });
-}
+  }
 };
 
 export const phoneVerification = async (req,res) =>{
@@ -40,7 +36,7 @@ export const phoneVerification = async (req,res) =>{
   try{
     const validatedData = await phoneSchema.parseAsync(req.body);
     const { phone,otp } = validatedData;
-    const existingUser = await User.findOne({ phone}).sort({createdAt:-1});
+    const existingUser = await User.findOne({phone}).sort({createdAt:-1});
     if (!existingUser) {
       return res.status(500).json({ message: 'User not found',success:false });
     }
@@ -56,7 +52,7 @@ export const phoneVerification = async (req,res) =>{
     existingUser.phone_verified = true;
     existingUser.otp = null;
     existingUser.otp_phone_expiry = null;
-    const isVerified = await existingUser.save()
+    const isVerified = await existingUser.save();
     if(isVerified){
       return res.status(200).json({ success:true, verified:true });
     }
@@ -72,19 +68,12 @@ export const phoneVerification = async (req,res) =>{
 };
 
 export const userExist = async (req,res) =>{
- 
   try{
     const validatedData = await phoneNumberSchema.parseAsync(req.body);
     const { phone } = validatedData;
     const existingUser = await User.findOne({ phone,phone_verified:true });
-    if (!existingUser) {
-      return res.status(500).json({ error: 'User not found',success:false });
-    }
-    if (existingUser.isDeleted) {
-      return res.status(500).json({ error: 'User not found',success:false });
-    }
     if(existingUser){
-      return res.status(200).json({ success:true,userExists:true,userId:existingUser._id});
+      return res.status(200).json({ success:true,is_new_user:existingUser.is_new_user,userId:existingUser._id});
     }
     return res.status(500).json({ error: 'User not found',success:false });
   } catch (error) {
